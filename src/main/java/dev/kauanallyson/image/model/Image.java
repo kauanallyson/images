@@ -1,8 +1,10 @@
 package dev.kauanallyson.image.model;
 
 import jakarta.persistence.*;
-import lombok.*;
+import lombok.Getter;
+import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
 import java.net.URI;
 import java.sql.Timestamp;
@@ -15,12 +17,24 @@ import java.util.UUID;
 public final class Image {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(nullable = false, unique = true)
     private UUID uuid;
 
-    private String originalName;
+    @Column(nullable = false, unique = true)
+    private String hash;
+
+    @Column(nullable = false)
+    private String fileName;
+
+    @Column(nullable = false)
     private String contentType;
+
+    @Column(nullable = false)
     private URI uri;
 
     @CreationTimestamp
     private Timestamp createdAt;
+
+    @UpdateTimestamp
+    private Timestamp updatedAt;
 }
