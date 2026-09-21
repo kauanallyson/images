@@ -18,6 +18,14 @@ import java.time.Instant;
 @RestControllerAdvice
 public final class GlobalExceptionHandler {
 
+    private static ProblemDetail problem(HttpStatus status, String detail, HttpServletRequest request) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
+        problem.setTitle(status.getReasonPhrase());
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty("timestamp", Instant.now());
+        return problem;
+    }
+
     @ExceptionHandler(BusinessException.class)
     public ProblemDetail businessException(BusinessException ex, HttpServletRequest request) {
         if (ex.getStatus().is5xxServerError()) {
@@ -52,13 +60,5 @@ public final class GlobalExceptionHandler {
     public ProblemDetail checkedException(Exception ex, HttpServletRequest request) {
         log.error("Unhandled exception on {} {}", request.getMethod(), request.getRequestURI(), ex);
         return problem(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred", request);
-    }
-
-    private static ProblemDetail problem(HttpStatus status, String detail, HttpServletRequest request) {
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
-        problem.setTitle(status.getReasonPhrase());
-        problem.setInstance(URI.create(request.getRequestURI()));
-        problem.setProperty("timestamp", Instant.now());
-        return problem;
     }
 }
