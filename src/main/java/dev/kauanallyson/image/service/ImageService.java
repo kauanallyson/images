@@ -1,57 +1,90 @@
 package dev.kauanallyson.image.service;
 
+import dev.kauanallyson.image.dto.ImageResponse;
+import dev.kauanallyson.image.dto.ImageUploadResponse;
+import dev.kauanallyson.image.exceptions.*;
+import dev.kauanallyson.image.mapper.ImageMapper;
 import dev.kauanallyson.image.model.Image;
 import dev.kauanallyson.image.ports.StoragePort;
 import dev.kauanallyson.image.repository.ImageRepository;
+import dev.kauanallyson.image.utils.HashUtils;
+import dev.kauanallyson.image.utils.MediaTypeUtils;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.net.URI;
-import java.util.UUID;
+import java.util.List;
 
 @Service
-public final class ImageService {
+public class ImageService {
+    private static final List<String> ALLOWED_TYPES = List.of("image/jpeg", "image/png", "image/webp");
+
     private final StoragePort storage;
+    private final ImageMapper imageMapper;
     private final ImageRepository imageRepository;
 
-    public ImageService(StoragePort storage, ImageRepository imageRepository) {
+    public ImageService(StoragePort storage, ImageMapper imageMapper, ImageRepository imageRepository) {
         this.storage = storage;
+        this.imageMapper = imageMapper;
         this.imageRepository = imageRepository;
     }
 
-    public Image uploadImage(MultipartFile file) {
-        if (file.isEmpty()) {
-            throw new RuntimeException("Empty file");
+    @Transactional
+    public ImageUploadResponse uploadImage(String hash, MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new EmptyFileException();
         }
 
-        // add validation of the file type to confirm it is an image
-        byte[] fileData;
+        byte[] bytes;
         try {
-            fileData = file.getBytes();
+            bytes = file.getBytes();
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new FileReadException(e);
         }
-        String originalName = file.getOriginalFilename();
-        String contentType = file.getContentType();
-        URI uri = storage.uploadFile(fileData, originalName, contentType);
 
-        Image image = new Image();
-        image.setOriginalName(originalName);
-        image.setContentType(contentType);
-        image.setUri(uri);
+        // verify if the magic bytes matches
+        String contentType = MediaTypeUtils.detectMimeType(bytes);
+        if (!ALLOWED_TYPES.contains(contentType)) {
+            throw new UnsupportedMediaTypeException(contentType, ALLOWED_TYPES);
+        }
 
-        return imageRepository.save(image);
+        // compare with the request header hash
+        if (!hash.equalsIgnoreCase(HashUtils.sha256Hex(bytes))) {
+            throw new FileIntegrityException();
+        }
+
+        Image image = imageRepository.findByHash(hash)
+                .orElseGet(() -> {
+                    URI uri = storage.uploadFile(bytes, hash, contentType);
+                    return imageRepository.save(Image.of(hash, file.getOriginalFilename(), contentType, uri));
+                });
+
+        return toResponse(image);
     }
 
-    public Page<Image> getAllImages(Pageable pageable){
-        return imageRepository.findAll(pageable);
+    private ImageUploadResponse toResponse(Image image) {
+        return imageMapper.toResponse(image, storage.presignedGetUrl(image.getHash()));
     }
 
-    public Image findImageByUUID(UUID uuid){
-        return imageRepository.findById(uuid)
-                .orElseThrow(()-> new RuntimeException("Image not found"));
+    public Page<ImageResponse> getAllImages(Pageable pageable) {
+        return imageRepository.findAll(pageable).map(imageMapper::toImageResponse);
+    }
+
+    public ImageUploadResponse findImageByHash(String hash) {
+        return imageRepository.findByHash(hash)
+                .map(this::toResponse)
+                .orElseThrow(() -> new ImageNotFoundException(hash));
+    }
+
+    @Transactional
+    public void deleteImageByHash(String hash) {
+        imageRepository.findByHash(hash).ifPresent(image -> {
+            storage.deleteFile(image.getHash());
+            imageRepository.delete(image);
+        });
     }
 }
