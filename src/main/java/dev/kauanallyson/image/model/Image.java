@@ -2,7 +2,6 @@ package dev.kauanallyson.image.model;
 
 import jakarta.persistence.*;
 import lombok.Getter;
-import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -11,7 +10,6 @@ import java.sql.Timestamp;
 import java.util.UUID;
 
 @Getter
-@Setter
 @Entity
 @Table(name = "images")
 public final class Image {
@@ -37,4 +35,13 @@ public final class Image {
 
     @UpdateTimestamp
     private Timestamp updatedAt;
+
+    public static Image of(String hash, String fileName, String contentType, URI uri) {
+        Image image = new Image();
+        image.hash = hash;
+        image.fileName = fileName;
+        image.contentType = contentType;
+        image.uri = uri;
+        return image;
+    }
 }
