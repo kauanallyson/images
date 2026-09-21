@@ -1,59 +1,68 @@
 package dev.kauanallyson.image.infrastructure;
 
+import dev.kauanallyson.image.exceptions.StorageException;
 import dev.kauanallyson.image.ports.StoragePort;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.S3ClientBuilder;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.net.URI;
 import java.net.URISyntaxException;
 
+@Slf4j
 @Component
 public final class S3StorageAdapter implements StoragePort {
 
     private final S3Client s3Client;
     private final String bucketName;
-    private final String region;
-    private final String endpoint;
 
     public S3StorageAdapter(
-            @Value("${aws.s3.bucket-name}") String bucketName,
-            @Value("${aws.s3.region}") String region,
-            @Value("${aws.s3.endpoint:}") String endpoint
+            S3Client s3Client,
+            @Value("${aws.s3.bucket-name}") String bucketName
     ) {
+        this.s3Client = s3Client;
         this.bucketName = bucketName;
-        this.region = region;
-        this.endpoint = endpoint == null ? "" : endpoint.trim().replaceAll("/+$", "");
-
-        S3ClientBuilder builder = S3Client.builder().region(Region.of(this.region));
-        if (!this.endpoint.isEmpty()) {
-            builder.endpointOverride(URI.create(this.endpoint))
-                    .forcePathStyle(true);
-        }
-        this.s3Client = builder.build();
     }
 
     @Override
-    public URI uploadFile(byte[] fileData, String fileName, String contentType) {
-        PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+    public URI uploadFile(byte[] fileData, String key, String contentType) {
+        PutObjectRequest request = PutObjectRequest.builder()
                 .bucket(bucketName)
-                .key(fileName)
+                .key(key)
                 .contentType(contentType)
                 .build();
 
-        s3Client.putObject(putObjectRequest, RequestBody.fromBytes(fileData));
-
-        String urlString = endpoint.isEmpty()
-                ? String.format("https://%s.s3.%s.amazonaws.com/%s", bucketName, region, fileName)
-                : String.format("%s/%s/%s", endpoint, bucketName, fileName);
         try {
-            return new URI(urlString);
+            s3Client.putObject(request, RequestBody.fromBytes(fileData));
+            log.info("Object '{}' uploaded successfully to bucket '{}'", key, bucketName);
+
+            return s3Client.utilities()
+                    .getUrl(b -> b.bucket(bucketName).key(key))
+                    .toURI();
+        } catch (SdkException e) {
+            throw new StorageException("Failed to upload object '" + key + "' to storage", e);
         } catch (URISyntaxException e) {
-            throw new RuntimeException(e);
+            throw new StorageException("Storage returned an invalid URL for object '" + key + "'", e);
+        }
+    }
+
+    @Override
+    public void deleteFile(String key) {
+        DeleteObjectRequest request = DeleteObjectRequest.builder()
+                .bucket(bucketName)
+                .key(key)
+                .build();
+
+        try {
+            s3Client.deleteObject(request);
+            log.info("Object '{}' deletion requested from bucket '{}'", key, bucketName);
+        } catch (SdkException e) {
+            throw new StorageException("Failed to delete object '" + key + "' from storage", e);
         }
     }
 }
