@@ -9,24 +9,34 @@ import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.time.Duration;
 
 @Slf4j
 @Component
 public final class S3StorageAdapter implements StoragePort {
 
     private final S3Client s3Client;
+    private final S3Presigner s3Presigner;
     private final String bucketName;
+    private final Duration presignTtl;
 
     public S3StorageAdapter(
             S3Client s3Client,
-            @Value("${aws.s3.bucket-name}") String bucketName
+            S3Presigner s3Presigner,
+            @Value("${aws.s3.bucket-name}") String bucketName,
+            @Value("${aws.s3.presign-ttl}") Duration presignTtl
     ) {
         this.s3Client = s3Client;
+        this.s3Presigner = s3Presigner;
         this.bucketName = bucketName;
+        this.presignTtl = presignTtl;
     }
 
     @Override
@@ -63,6 +73,27 @@ public final class S3StorageAdapter implements StoragePort {
             log.info("Object '{}' deletion requested from bucket '{}'", key, bucketName);
         } catch (SdkException e) {
             throw new StorageException("Failed to delete object '" + key + "' from storage", e);
+        }
+    }
+
+    @Override
+    public URI presignedGetUrl(String key) {
+        GetObjectRequest getRequest = GetObjectRequest.builder()
+                .bucket(bucketName)
+                .key(key)
+                .build();
+
+        GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
+                .signatureDuration(presignTtl)
+                .getObjectRequest(getRequest)
+                .build();
+
+        try {
+            return s3Presigner.presignGetObject(presignRequest).url().toURI();
+        } catch (SdkException e) {
+            throw new StorageException("Failed to presign GET URL for object '" + key + "'", e);
+        } catch (URISyntaxException e) {
+            throw new StorageException("Storage returned an invalid presigned URL for object '" + key + "'", e);
         }
     }
 }
