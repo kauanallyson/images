@@ -9,10 +9,10 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>dev.kauanallyson</groupId>
-    <artifactId>image</artifactId>
+    <artifactId>images</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>image</name>
-    <description>image</description>
+    <name>images</name>
+    <description>images</description>
     <url/>
     <licenses>
         <license/>
