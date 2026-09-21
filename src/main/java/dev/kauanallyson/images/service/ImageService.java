@@ -67,7 +67,7 @@ public class ImageService {
     }
 
     private ImageUploadResponse toResponse(Image image) {
-        return imageMapper.toResponse(image, storage.presignedGetUrl(image.getHash()));
+        return imageMapper.toResponse(image, storage.presignedGetUrl(image.getHash(), image.getFileName()));
     }
 
     public Page<ImageResponse> getAllImages(Pageable pageable) {

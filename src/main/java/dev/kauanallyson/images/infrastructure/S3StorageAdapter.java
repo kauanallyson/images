@@ -16,6 +16,8 @@ import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignReques
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 
 @Slf4j
@@ -77,10 +79,11 @@ public final class S3StorageAdapter implements StoragePort {
     }
 
     @Override
-    public URI presignedGetUrl(String key) {
+    public URI presignedGetUrl(String key, String downloadFileName) {
         GetObjectRequest getRequest = GetObjectRequest.builder()
                 .bucket(bucketName)
                 .key(key)
+                .responseContentDisposition(contentDisposition(downloadFileName))
                 .build();
 
         GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
@@ -95,5 +98,14 @@ public final class S3StorageAdapter implements StoragePort {
         } catch (URISyntaxException e) {
             throw new StorageException("Storage returned an invalid presigned URL for object '" + key + "'", e);
         }
+    }
+
+    private static String contentDisposition(String fileName) {
+        if (fileName == null || fileName.isBlank()) {
+            return "attachment";
+        }
+        String ascii = fileName.replaceAll("[^\\x20-\\x7E]", "_").replace("\"", "_");
+        String encoded = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
+        return "attachment; filename=\"" + ascii + "\"; filename*=UTF-8''" + encoded;
     }
 }
