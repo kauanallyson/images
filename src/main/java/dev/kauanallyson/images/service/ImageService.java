@@ -7,8 +7,8 @@ import dev.kauanallyson.images.mapper.ImageMapper;
 import dev.kauanallyson.images.model.Image;
 import dev.kauanallyson.images.ports.StoragePort;
 import dev.kauanallyson.images.repository.ImageRepository;
+import dev.kauanallyson.images.utils.FileMetadata;
 import dev.kauanallyson.images.utils.HashUtils;
-import dev.kauanallyson.images.utils.MediaTypeUtils;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -18,6 +18,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.net.URI;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class ImageService {
@@ -35,39 +36,23 @@ public class ImageService {
 
     @Transactional
     public ImageUploadResponse uploadImage(String hash, MultipartFile file) {
-        if (file == null || file.isEmpty()) {
-            throw new EmptyFileException();
+        // TODO: create file validator class
+        validateFileIsNotEmpty(file);
+
+        byte[] fileData = getFileData(file);
+
+        validateRequestHashWithFileDataHash(hash, fileData);
+
+        String mimeType = getFileMimeType(fileData);
+
+        Optional<Image> existing = imageRepository.findByHash(hash);
+        if (existing.isPresent()) {
+            return withPresignedUrl(existing.get());
         }
 
-        byte[] bytes;
-        try {
-            bytes = file.getBytes();
-        } catch (IOException e) {
-            throw new FileReadException(e);
-        }
-
-        // verify if the magic bytes matches
-        String contentType = MediaTypeUtils.detectMimeType(bytes);
-        if (!ALLOWED_TYPES.contains(contentType)) {
-            throw new UnsupportedMediaTypeException(contentType, ALLOWED_TYPES);
-        }
-
-        // compare with the request header hash
-        if (!hash.equalsIgnoreCase(HashUtils.sha256Hex(bytes))) {
-            throw new FileIntegrityException();
-        }
-
-        Image image = imageRepository.findByHash(hash)
-                .orElseGet(() -> {
-                    URI uri = storage.uploadFile(bytes, hash, contentType);
-                    return imageRepository.save(Image.of(hash, file.getOriginalFilename(), contentType, uri));
-                });
-
-        return toResponse(image);
-    }
-
-    private ImageUploadResponse toResponse(Image image) {
-        return imageMapper.toResponse(image, storage.presignedGetUrl(image.getHash(), image.getFileName()));
+        URI uri = storage.uploadFile(fileData, hash, mimeType);
+        Image savedImage = imageRepository.save(Image.of(hash, file.getOriginalFilename(), mimeType, uri));
+        return withPresignedUrl(savedImage);
     }
 
     public Page<ImageResponse> getAllImages(Pageable pageable) {
@@ -76,7 +61,7 @@ public class ImageService {
 
     public ImageUploadResponse findImageByHash(String hash) {
         return imageRepository.findByHash(hash)
-                .map(this::toResponse)
+                .map(this::withPresignedUrl)
                 .orElseThrow(() -> new ImageNotFoundException(hash));
     }
 
@@ -86,5 +71,37 @@ public class ImageService {
             storage.deleteFile(image.getHash());
             imageRepository.delete(image);
         });
+    }
+
+    private void validateFileIsNotEmpty(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new EmptyFileException();
+        }
+    }
+
+    private byte[] getFileData(MultipartFile file) {
+        try {
+            return file.getBytes();
+        } catch (IOException e) {
+            throw new FileReadException(e);
+        }
+    }
+
+    private String getFileMimeType(byte[] fileData) {
+        String mimeType = FileMetadata.mimeType(fileData);
+        if (!ALLOWED_TYPES.contains(mimeType)) {
+            throw new UnsupportedMediaTypeException(mimeType, ALLOWED_TYPES);
+        }
+        return mimeType;
+    }
+
+    private void validateRequestHashWithFileDataHash(String hash, byte[] fileData) {
+        if (!hash.equalsIgnoreCase(HashUtils.sha256Hex(fileData))) {
+            throw new FileIntegrityException();
+        }
+    }
+
+    private ImageUploadResponse withPresignedUrl(Image image) {
+        return imageMapper.toResponse(image, storage.presignedGetUrl(image.getHash(), image.getFileName()));
     }
 }

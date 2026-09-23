@@ -2,13 +2,14 @@ package dev.kauanallyson.images.utils;
 
 import org.apache.tika.Tika;
 
-public final class MediaTypeUtils {
+public final class FileMetadata {
+    // apache tika for general document metadata
     private static final Tika TIKA = new Tika();
 
-    private MediaTypeUtils() {
+    private FileMetadata() {
     }
 
-    public static String detectMimeType(byte[] bytes) {
+    public static String mimeType(byte[] bytes) {
         return TIKA.detect(bytes);
     }
 }
