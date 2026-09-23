@@ -4,6 +4,7 @@ import dev.kauanallyson.images.exceptions.StorageException;
 import dev.kauanallyson.images.ports.StoragePort;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ContentDisposition;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
@@ -16,7 +17,6 @@ import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignReques
 
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 
@@ -106,11 +106,10 @@ public final class S3StorageAdapter implements StoragePort {
     }
 
     private static String contentDisposition(String fileName) {
-        if (fileName == null || fileName.isBlank()) {
-            return "attachment";
+        ContentDisposition.Builder builder = ContentDisposition.attachment();
+        if (fileName != null && !fileName.isBlank()) {
+            builder.filename(fileName, StandardCharsets.UTF_8);
         }
-        String ascii = fileName.replaceAll("[^\\x20-\\x7E]", "_").replace("\"", "_");
-        String encoded = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
-        return "attachment; filename=\"" + ascii + "\"; filename*=UTF-8''" + encoded;
+        return builder.build().toString();
     }
 }
