@@ -42,7 +42,18 @@ public final class S3StorageAdapter implements StoragePort {
     }
 
     @Override
-    public URI uploadFile(byte[] fileData, String key, String contentType) {
+    public URI objectUri(String key) {
+        try {
+            return s3Client.utilities()
+                    .getUrl(b -> b.bucket(bucketName).key(key))
+                    .toURI();
+        } catch (URISyntaxException e) {
+            throw new StorageException("Storage returned an invalid URL for object '" + key + "'", e);
+        }
+    }
+
+    @Override
+    public void uploadFile(byte[] fileData, String key, String contentType) {
         PutObjectRequest request = PutObjectRequest.builder()
                 .bucket(bucketName)
                 .key(key)
@@ -52,14 +63,8 @@ public final class S3StorageAdapter implements StoragePort {
         try {
             s3Client.putObject(request, RequestBody.fromBytes(fileData));
             log.info("Object '{}' uploaded successfully to bucket '{}'", key, bucketName);
-
-            return s3Client.utilities()
-                    .getUrl(b -> b.bucket(bucketName).key(key))
-                    .toURI();
         } catch (SdkException e) {
             throw new StorageException("Failed to upload object '" + key + "' to storage", e);
-        } catch (URISyntaxException e) {
-            throw new StorageException("Storage returned an invalid URL for object '" + key + "'", e);
         }
     }
 
