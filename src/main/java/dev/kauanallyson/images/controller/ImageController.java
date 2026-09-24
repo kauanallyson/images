@@ -20,7 +20,6 @@ import java.io.IOException;
 import java.io.InputStream;
 
 
-
 @RestController
 @RequestMapping("/api/v1/images")
 public class ImageController {

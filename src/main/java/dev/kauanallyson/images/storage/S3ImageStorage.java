@@ -1,7 +1,6 @@
 package dev.kauanallyson.images.storage;
 
 import dev.kauanallyson.images.exceptions.StorageException;
-import dev.kauanallyson.images.storage.ImageStorage;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ContentDisposition;
@@ -40,6 +39,14 @@ public final class S3ImageStorage implements ImageStorage {
         this.s3Presigner = s3Presigner;
         this.bucketName = bucketName;
         this.presignTtl = presignTtl;
+    }
+
+    private static String contentDisposition(String fileName) {
+        ContentDisposition.Builder builder = ContentDisposition.attachment();
+        if (fileName != null && !fileName.isBlank()) {
+            builder.filename(fileName, StandardCharsets.UTF_8);
+        }
+        return builder.build().toString();
     }
 
     @Override
@@ -105,13 +112,5 @@ public final class S3ImageStorage implements ImageStorage {
         } catch (URISyntaxException e) {
             throw new StorageException("Storage returned an invalid presigned URL for object '" + key + "'", e);
         }
-    }
-
-    private static String contentDisposition(String fileName) {
-        ContentDisposition.Builder builder = ContentDisposition.attachment();
-        if (fileName != null && !fileName.isBlank()) {
-            builder.filename(fileName, StandardCharsets.UTF_8);
-        }
-        return builder.build().toString();
     }
 }
