@@ -3,6 +3,7 @@ package dev.kauanallyson.images.storage;
 import dev.kauanallyson.images.exceptions.StorageException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.InputStreamSource;
 import org.springframework.http.ContentDisposition;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.core.exception.SdkException;
@@ -14,7 +15,9 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
@@ -50,18 +53,7 @@ public final class S3ImageStorage implements ImageStorage {
     }
 
     @Override
-    public URI objectUri(String key) {
-        try {
-            return s3Client.utilities()
-                    .getUrl(b -> b.bucket(bucketName).key(key))
-                    .toURI();
-        } catch (URISyntaxException e) {
-            throw new StorageException("Storage returned an invalid URL for object '" + key + "'", e);
-        }
-    }
-
-    @Override
-    public void upload(InputStream content, long size, String key, String contentType) {
+    public void upload(InputStreamSource content, long size, String key, String contentType) {
         PutObjectRequest request = PutObjectRequest.builder()
                 .bucket(bucketName)
                 .key(key)
@@ -70,10 +62,19 @@ public final class S3ImageStorage implements ImageStorage {
                 .build();
 
         try {
-            s3Client.putObject(request, RequestBody.fromInputStream(content, size));
+            s3Client.putObject(request, RequestBody.fromContentProvider(() -> open(content), size, contentType));
             log.info("Object '{}' uploaded successfully to bucket '{}'", key, bucketName);
         } catch (SdkException e) {
             throw new StorageException("Failed to upload object '" + key + "' to storage", e);
+        }
+    }
+
+    // the sdk asks for a new stream on every attempt, so a retry resends the content from the start
+    private static InputStream open(InputStreamSource content) {
+        try {
+            return content.getInputStream();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 

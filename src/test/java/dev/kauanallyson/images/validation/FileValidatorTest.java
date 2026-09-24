@@ -5,7 +5,6 @@ import dev.kauanallyson.images.exceptions.EmptyFileException;
 import dev.kauanallyson.images.exceptions.FileIntegrityException;
 import dev.kauanallyson.images.exceptions.UnsupportedMediaTypeException;
 import dev.kauanallyson.images.service.UploadSource;
-import dev.kauanallyson.images.utils.HashUtils;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
@@ -14,7 +13,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class FileValidatorTest {
@@ -22,12 +20,12 @@ class FileValidatorTest {
     // Minimal 1x1 PNG.
     static final byte[] PNG = java.util.Base64.getDecoder().decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==");
-    static final String PNG_HASH = HashUtils.sha256Hex(PNG);
+    static final String PNG_HASH = VerifiedContent.sha256Hex(PNG);
 
     final FileValidator validator = new FileValidator(new ImageProperties(List.of("image/png")));
 
     static UploadSource source(byte[] data, String fileName) {
-        return new UploadSource(new ByteArrayInputStream(data), data.length, fileName);
+        return new UploadSource(() -> new ByteArrayInputStream(data), data.length, fileName);
     }
 
     @Test
@@ -38,7 +36,7 @@ class FileValidatorTest {
         assertThat(upload.mimeType()).isEqualTo("image/png");
         assertThat(upload.originalFileName()).isEqualTo("pic.png");
         assertThat(upload.size()).isEqualTo(PNG.length);
-        assertThat(upload.content().readAllBytes()).isEqualTo(PNG);
+        assertThat(upload.content().getInputStream().readAllBytes()).isEqualTo(PNG);
     }
 
     @Test
@@ -52,7 +50,7 @@ class FileValidatorTest {
     @Test
     void rejectsDisallowedMimeType() {
         byte[] text = "hello".getBytes(StandardCharsets.UTF_8);
-        assertThatThrownBy(() -> validator.validate(HashUtils.sha256Hex(text), source(text, "a.txt")))
+        assertThatThrownBy(() -> validator.validate(VerifiedContent.sha256Hex(text), source(text, "a.txt")))
                 .isInstanceOf(UnsupportedMediaTypeException.class);
     }
 
@@ -65,11 +63,37 @@ class FileValidatorTest {
     }
 
     @Test
-    void verifyHashRejectsMismatch() {
+    void contentVerifiesOnceFullyRead() throws IOException {
         ValidatedUpload upload = validator.validate(PNG_HASH, source(PNG, "pic.png"));
+        upload.content().getInputStream().readAllBytes();
 
-        assertThatCode(() -> validator.verifyHash(upload, PNG_HASH)).doesNotThrowAnyException();
-        assertThatThrownBy(() -> validator.verifyHash(upload, HashUtils.sha256Hex(new byte[]{1})))
-                .isInstanceOf(FileIntegrityException.class);
+        upload.content().verify();
+    }
+
+    @Test
+    void contentFailsVerificationWhenItDoesNotMatchDeclaredHash() throws IOException {
+        byte[] otherPng = PNG.clone();
+        otherPng[otherPng.length - 1] ^= 1;
+        ValidatedUpload upload = validator.validate(PNG_HASH, source(otherPng, "pic.png"));
+        upload.content().getInputStream().readAllBytes();
+
+        assertThatThrownBy(() -> upload.content().verify()).isInstanceOf(FileIntegrityException.class);
+    }
+
+    @Test
+    void contentFailsVerificationWhenNotFullyRead() throws IOException {
+        ValidatedUpload upload = validator.validate(PNG_HASH, source(PNG, "pic.png"));
+        upload.content().getInputStream().readNBytes(PNG.length - 1);
+
+        assertThatThrownBy(() -> upload.content().verify()).isInstanceOf(FileIntegrityException.class);
+    }
+
+    @Test
+    void reopeningContentRestartsVerification() throws IOException {
+        ValidatedUpload upload = validator.validate(PNG_HASH, source(PNG, "pic.png"));
+        upload.content().getInputStream().readNBytes(PNG.length / 2);
+        upload.content().getInputStream().readAllBytes();
+
+        upload.content().verify();
     }
 }

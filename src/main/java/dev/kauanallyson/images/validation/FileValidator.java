@@ -6,7 +6,7 @@ import dev.kauanallyson.images.exceptions.FileIntegrityException;
 import dev.kauanallyson.images.exceptions.FileReadException;
 import dev.kauanallyson.images.exceptions.UnsupportedMediaTypeException;
 import dev.kauanallyson.images.service.UploadSource;
-import dev.kauanallyson.images.utils.FileMetadata;
+import org.apache.tika.Tika;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedInputStream;
@@ -18,6 +18,7 @@ import java.util.regex.Pattern;
 @Component
 public class FileValidator {
     private static final Pattern SHA256_HEX = Pattern.compile("[0-9a-f]{64}");
+    private static final Tika TIKA = new Tika();
 
     private final ImageProperties properties;
 
@@ -36,10 +37,10 @@ public class FileValidator {
             throw new FileIntegrityException();
         }
 
-        InputStream content = new BufferedInputStream(source.content());
         String mimeType;
-        try {
-            mimeType = FileMetadata.mimeType(content);
+        // sniffs only the leading bytes of a separately opened stream
+        try (InputStream content = new BufferedInputStream(source.content().getInputStream())) {
+            mimeType = TIKA.detect(content);
         } catch (IOException e) {
             throw new FileReadException(e);
         }
@@ -47,12 +48,7 @@ public class FileValidator {
             throw new UnsupportedMediaTypeException(mimeType, properties.allowedTypes());
         }
 
-        return new ValidatedUpload(content, source.size(), hash, mimeType, source.fileName());
-    }
-
-    public void verifyHash(ValidatedUpload upload, String actualHash) {
-        if (!upload.hash().equals(actualHash)) {
-            throw new FileIntegrityException();
-        }
+        VerifiedContent verified = new VerifiedContent(source.content(), source.size(), hash);
+        return new ValidatedUpload(verified, source.size(), hash, mimeType, source.fileName());
     }
 }
