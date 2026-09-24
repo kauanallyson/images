@@ -5,7 +5,7 @@ import dev.kauanallyson.images.exceptions.ImageNotFoundException;
 import dev.kauanallyson.images.exceptions.StorageException;
 import dev.kauanallyson.images.mapper.ImageMapper;
 import dev.kauanallyson.images.model.Image;
-import dev.kauanallyson.images.ports.StoragePort;
+import dev.kauanallyson.images.storage.ImageStorage;
 import dev.kauanallyson.images.repository.ImageRepository;
 import dev.kauanallyson.images.validation.FileValidator;
 import dev.kauanallyson.images.validation.ValidatedUpload;
@@ -39,7 +39,7 @@ class ImageServiceTest {
     static final URI PRESIGNED = URI.create("https://bucket/abc123?sig");
     static final MultipartFile FILE = new MockMultipartFile("file", "pic.png", "image/png", DATA);
 
-    @Mock StoragePort storage;
+    @Mock ImageStorage storage;
     @Mock ImageMapper mapper;
     @Mock ImageRepository repository;
     @Mock FileValidator validator;
@@ -63,7 +63,7 @@ class ImageServiceTest {
         assertThat(result).isSameAs(response);
         InOrder order = inOrder(repository, storage);
         order.verify(repository).save(any(Image.class));
-        order.verify(storage).uploadFile(DATA, HASH, "image/png");
+        order.verify(storage).upload(DATA, HASH, "image/png");
     }
 
     @Test
@@ -72,7 +72,7 @@ class ImageServiceTest {
         when(repository.findByHash(HASH)).thenReturn(Optional.empty());
         when(storage.objectUri(HASH)).thenReturn(OBJECT_URI);
         when(repository.save(any(Image.class))).thenReturn(image);
-        doThrow(new StorageException("boom", null)).when(storage).uploadFile(DATA, HASH, "image/png");
+        doThrow(new StorageException("boom", null)).when(storage).upload(DATA, HASH, "image/png");
 
         assertThatThrownBy(() -> service.uploadImage(HASH, FILE)).isInstanceOf(StorageException.class);
 
@@ -90,7 +90,7 @@ class ImageServiceTest {
         assertThat(service.uploadImage(HASH, FILE)).isSameAs(response);
 
         verify(repository, never()).save(any());
-        verify(storage, never()).uploadFile(any(), anyString(), anyString());
+        verify(storage, never()).upload(any(), anyString(), anyString());
     }
 
     @Test
@@ -101,7 +101,7 @@ class ImageServiceTest {
 
         InOrder order = inOrder(repository, storage);
         order.verify(repository).delete(image);
-        order.verify(storage).deleteFile(HASH);
+        order.verify(storage).delete(HASH);
     }
 
     @Test
@@ -111,7 +111,7 @@ class ImageServiceTest {
         service.deleteImageByHash(HASH);
 
         verify(repository, never()).delete(any());
-        verify(storage, never()).deleteFile(anyString());
+        verify(storage, never()).delete(anyString());
     }
 
     @Test

@@ -1,7 +1,7 @@
-package dev.kauanallyson.images.infrastructure;
+package dev.kauanallyson.images.storage;
 
 import dev.kauanallyson.images.exceptions.StorageException;
-import dev.kauanallyson.images.ports.StoragePort;
+import dev.kauanallyson.images.storage.ImageStorage;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ContentDisposition;
@@ -22,14 +22,14 @@ import java.time.Duration;
 
 @Slf4j
 @Component
-public final class S3StorageAdapter implements StoragePort {
+public final class S3ImageStorage implements ImageStorage {
 
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
     private final String bucketName;
     private final Duration presignTtl;
 
-    public S3StorageAdapter(
+    public S3ImageStorage(
             S3Client s3Client,
             S3Presigner s3Presigner,
             @Value("${aws.s3.bucket-name}") String bucketName,
@@ -53,7 +53,7 @@ public final class S3StorageAdapter implements StoragePort {
     }
 
     @Override
-    public void uploadFile(byte[] fileData, String key, String contentType) {
+    public void upload(byte[] fileData, String key, String contentType) {
         PutObjectRequest request = PutObjectRequest.builder()
                 .bucket(bucketName)
                 .key(key)
@@ -69,7 +69,7 @@ public final class S3StorageAdapter implements StoragePort {
     }
 
     @Override
-    public void deleteFile(String key) {
+    public void delete(String key) {
         DeleteObjectRequest request = DeleteObjectRequest.builder()
                 .bucket(bucketName)
                 .key(key)

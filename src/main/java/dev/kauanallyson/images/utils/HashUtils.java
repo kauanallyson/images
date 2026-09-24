@@ -6,6 +6,9 @@ import java.util.HexFormat;
 
 public final class HashUtils {
 
+    private HashUtils() {
+    }
+
     public static String sha256Hex(byte[] data) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

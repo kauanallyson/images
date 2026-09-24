@@ -1,5 +1,6 @@
-package dev.kauanallyson.images.exceptions;
+package dev.kauanallyson.images.controller.advice;
 
+import dev.kauanallyson.images.exceptions.BusinessException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;

@@ -5,7 +5,7 @@ import dev.kauanallyson.images.dto.ImageUploadResponse;
 import dev.kauanallyson.images.exceptions.ImageNotFoundException;
 import dev.kauanallyson.images.mapper.ImageMapper;
 import dev.kauanallyson.images.model.Image;
-import dev.kauanallyson.images.ports.StoragePort;
+import dev.kauanallyson.images.storage.ImageStorage;
 import dev.kauanallyson.images.repository.ImageRepository;
 import dev.kauanallyson.images.validation.FileValidator;
 import dev.kauanallyson.images.validation.ValidatedUpload;
@@ -19,12 +19,12 @@ import java.util.Optional;
 
 @Service
 public class ImageService {
-    private final StoragePort storage;
+    private final ImageStorage storage;
     private final ImageMapper imageMapper;
     private final ImageRepository imageRepository;
     private final FileValidator fileValidator;
 
-    public ImageService(StoragePort storage, ImageMapper imageMapper, ImageRepository imageRepository,
+    public ImageService(ImageStorage storage, ImageMapper imageMapper, ImageRepository imageRepository,
                         FileValidator fileValidator) {
         this.storage = storage;
         this.imageMapper = imageMapper;
@@ -43,7 +43,7 @@ public class ImageService {
 
         Image saved = imageRepository.save(Image.of(
                 upload.hash(), upload.originalFileName(), upload.mimeType(), storage.objectUri(upload.hash())));
-        storage.uploadFile(upload.data(), upload.hash(), upload.mimeType());
+        storage.upload(upload.data(), upload.hash(), upload.mimeType());
         return withPresignedUrl(saved);
     }
 
@@ -61,7 +61,7 @@ public class ImageService {
     public void deleteImageByHash(String hash) {
         imageRepository.findByHash(hash).ifPresent(image -> {
             imageRepository.delete(image);
-            storage.deleteFile(image.getHash());
+            storage.delete(image.getHash());
         });
     }
 
