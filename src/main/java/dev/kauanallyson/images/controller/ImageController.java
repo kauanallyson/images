@@ -2,7 +2,9 @@ package dev.kauanallyson.images.controller;
 
 import dev.kauanallyson.images.dto.ImageResponse;
 import dev.kauanallyson.images.dto.ImageUploadResponse;
+import dev.kauanallyson.images.exceptions.FileReadException;
 import dev.kauanallyson.images.service.ImageService;
+import dev.kauanallyson.images.service.UploadSource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -13,6 +15,9 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.io.InputStream;
 
 
 
@@ -30,8 +35,13 @@ public class ImageController {
             @RequestHeader("X-File-SHA256") String hash,
             @RequestPart("file") MultipartFile file
     ) {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(imageService.uploadImage(hash, file));
+        try (InputStream content = file.getInputStream()) {
+            UploadSource source = new UploadSource(content, file.getSize(), file.getOriginalFilename());
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(imageService.uploadImage(hash, source));
+        } catch (IOException e) {
+            throw new FileReadException(e);
+        }
     }
 
     @GetMapping

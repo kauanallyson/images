@@ -5,43 +5,54 @@ import dev.kauanallyson.images.exceptions.EmptyFileException;
 import dev.kauanallyson.images.exceptions.FileIntegrityException;
 import dev.kauanallyson.images.exceptions.FileReadException;
 import dev.kauanallyson.images.exceptions.UnsupportedMediaTypeException;
+import dev.kauanallyson.images.service.UploadSource;
 import dev.kauanallyson.images.utils.FileMetadata;
-import dev.kauanallyson.images.utils.HashUtils;
 import org.springframework.stereotype.Component;
-import org.springframework.web.multipart.MultipartFile;
 
+import java.io.BufferedInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 @Component
 public class FileValidator {
+    private static final Pattern SHA256_HEX = Pattern.compile("[0-9a-f]{64}");
+
     private final ImageProperties properties;
 
     public FileValidator(ImageProperties properties) {
         this.properties = properties;
     }
 
-    public ValidatedUpload validate(String expectedHash, MultipartFile file) {
-        if (file == null || file.isEmpty()) {
+    public ValidatedUpload validate(String expectedHash, UploadSource source) {
+        if (source == null || source.content() == null || source.size() <= 0) {
             throw new EmptyFileException();
         }
 
-        byte[] data;
+        // the declared hash becomes the storage key before the content is verified, so it must be well-formed
+        String hash = expectedHash == null ? "" : expectedHash.trim().toLowerCase(Locale.ROOT);
+        if (!SHA256_HEX.matcher(hash).matches()) {
+            throw new FileIntegrityException();
+        }
+
+        InputStream content = new BufferedInputStream(source.content());
+        String mimeType;
         try {
-            data = file.getBytes();
+            mimeType = FileMetadata.mimeType(content);
         } catch (IOException e) {
             throw new FileReadException(e);
         }
-
-        String mimeType = FileMetadata.mimeType(data);
         if (!properties.allowedTypes().contains(mimeType)) {
             throw new UnsupportedMediaTypeException(mimeType, properties.allowedTypes());
         }
 
-        String hash = HashUtils.sha256Hex(data);
-        if (expectedHash == null || !hash.equalsIgnoreCase(expectedHash.trim())) {
+        return new ValidatedUpload(content, source.size(), hash, mimeType, source.fileName());
+    }
+
+    public void verifyHash(ValidatedUpload upload, String actualHash) {
+        if (!upload.hash().equals(actualHash)) {
             throw new FileIntegrityException();
         }
-
-        return new ValidatedUpload(data, hash, mimeType, file.getOriginalFilename());
     }
 }

@@ -1,4 +1,7 @@
 package dev.kauanallyson.images.validation;
 
-public record ValidatedUpload(byte[] data, String hash, String mimeType, String originalFileName) {
+import java.io.InputStream;
+
+// hash is the client-declared hash; the content is only verified against it once fully read
+public record ValidatedUpload(InputStream content, long size, String hash, String mimeType, String originalFileName) {
 }

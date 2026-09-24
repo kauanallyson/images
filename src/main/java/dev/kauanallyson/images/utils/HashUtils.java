@@ -9,13 +9,23 @@ public final class HashUtils {
     private HashUtils() {
     }
 
-    public static String sha256Hex(byte[] data) {
+    public static MessageDigest sha256() {
         try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hashBytes = digest.digest(data);
-            return HexFormat.of().formatHex(hashBytes);
+            return MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 algorithm not available", e);
         }
+    }
+
+    public static String sha256Hex(byte[] data) {
+        return hex(sha256().digest(data));
+    }
+
+    public static String hex(MessageDigest digest) {
+        return hex(digest.digest());
+    }
+
+    private static String hex(byte[] hashBytes) {
+        return HexFormat.of().formatHex(hashBytes);
     }
 }

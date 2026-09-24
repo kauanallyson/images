@@ -15,6 +15,7 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
@@ -53,15 +54,16 @@ public final class S3ImageStorage implements ImageStorage {
     }
 
     @Override
-    public void upload(byte[] fileData, String key, String contentType) {
+    public void upload(InputStream content, long size, String key, String contentType) {
         PutObjectRequest request = PutObjectRequest.builder()
                 .bucket(bucketName)
                 .key(key)
                 .contentType(contentType)
+                .contentLength(size)
                 .build();
 
         try {
-            s3Client.putObject(request, RequestBody.fromBytes(fileData));
+            s3Client.putObject(request, RequestBody.fromInputStream(content, size));
             log.info("Object '{}' uploaded successfully to bucket '{}'", key, bucketName);
         } catch (SdkException e) {
             throw new StorageException("Failed to upload object '" + key + "' to storage", e);

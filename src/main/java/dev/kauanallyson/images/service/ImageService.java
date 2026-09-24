@@ -10,6 +10,7 @@ import dev.kauanallyson.images.storage.ImageStorage;
 import dev.kauanallyson.images.repository.ImageRepository;
 import dev.kauanallyson.images.validation.FileValidator;
 import dev.kauanallyson.images.validation.ValidatedUpload;
+import dev.kauanallyson.images.utils.HashUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -17,8 +18,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.springframework.web.multipart.MultipartFile;
 
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
 import java.util.Optional;
 
 @Slf4j
@@ -38,8 +40,8 @@ public class ImageService {
     }
 
     @Transactional
-    public ImageUploadResponse uploadImage(String hash, MultipartFile file) {
-        ValidatedUpload upload = fileValidator.validate(hash, file);
+    public ImageUploadResponse uploadImage(String hash, UploadSource source) {
+        ValidatedUpload upload = fileValidator.validate(hash, source);
 
         Optional<Image> existing = imageRepository.findByHash(upload.hash());
         if (existing.isPresent()) {
@@ -48,8 +50,12 @@ public class ImageService {
 
         Image saved = imageRepository.save(Image.of(
                 upload.hash(), upload.originalFileName(), upload.mimeType(), storage.objectUri(upload.hash())));
-        storage.upload(upload.data(), upload.hash(), upload.mimeType());
+        // the content is hashed while streaming to storage, so a mismatch is only known after the upload;
+        // throwing rolls the row back and the rollback hook removes the object
+        MessageDigest digest = HashUtils.sha256();
+        storage.upload(new DigestInputStream(upload.content(), digest), upload.size(), upload.hash(), upload.mimeType());
         deleteObjectOnRollback(upload.hash());
+        fileValidator.verifyHash(upload, HashUtils.hex(digest));
         return withPresignedUrl(saved);
     }
 
