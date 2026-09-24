@@ -3,12 +3,14 @@ package dev.kauanallyson.images.service;
 import dev.kauanallyson.images.dto.ImageResponse;
 import dev.kauanallyson.images.dto.ImageUploadResponse;
 import dev.kauanallyson.images.exceptions.ImageNotFoundException;
+import dev.kauanallyson.images.exceptions.StorageException;
 import dev.kauanallyson.images.mapper.ImageMapper;
 import dev.kauanallyson.images.model.Image;
 import dev.kauanallyson.images.storage.ImageStorage;
 import dev.kauanallyson.images.repository.ImageRepository;
 import dev.kauanallyson.images.validation.FileValidator;
 import dev.kauanallyson.images.validation.ValidatedUpload;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -19,6 +21,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Optional;
 
+@Slf4j
 @Service
 public class ImageService {
     private final ImageStorage storage;
@@ -64,7 +67,7 @@ public class ImageService {
     public void deleteImageByHash(String hash) {
         imageRepository.findByHash(hash).ifPresent(image -> {
             imageRepository.delete(image);
-            storage.delete(image.getHash());
+            deleteObjectAfterCommit(image.getHash());
         });
     }
 
@@ -75,6 +78,23 @@ public class ImageService {
             public void afterCompletion(int status) {
                 if (status != STATUS_COMMITTED && !imageRepository.existsByHash(hash)) {
                     storage.delete(hash);
+                }
+            }
+        });
+    }
+
+    // a failed object delete only leaves an orphan, so it is logged instead of failing the committed request
+    private void deleteObjectAfterCommit(String hash) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                if (imageRepository.existsByHash(hash)) {
+                    return;
+                }
+                try {
+                    storage.delete(hash);
+                } catch (StorageException e) {
+                    log.warn("Image '{}' deleted but its object could not be removed from storage", hash, e);
                 }
             }
         });

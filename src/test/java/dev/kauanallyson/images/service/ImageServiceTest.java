@@ -153,14 +153,56 @@ class ImageServiceTest {
     }
 
     @Test
-    void deleteRemovesRowBeforeObject() {
+    void deleteRemovesObjectOnlyAfterCommit() {
         when(repository.findByHash(HASH)).thenReturn(Optional.of(image));
+        when(repository.existsByHash(HASH)).thenReturn(false);
 
         service.deleteImageByHash(HASH);
 
-        InOrder order = inOrder(repository, storage);
-        order.verify(repository).delete(image);
-        order.verify(storage).delete(HASH);
+        verify(repository).delete(image);
+        verify(storage, never()).delete(anyString());
+
+        commitTransaction();
+
+        verify(storage).delete(HASH);
+    }
+
+    @Test
+    void deleteKeepsObjectWhenTransactionRollsBack() {
+        when(repository.findByHash(HASH)).thenReturn(Optional.of(image));
+
+        service.deleteImageByHash(HASH);
+        completeTransaction(TransactionSynchronization.STATUS_ROLLED_BACK);
+
+        verify(storage, never()).delete(anyString());
+    }
+
+    @Test
+    void deleteKeepsObjectWhenSameHashWasReuploadedBeforeCleanup() {
+        when(repository.findByHash(HASH)).thenReturn(Optional.of(image));
+        when(repository.existsByHash(HASH)).thenReturn(true);
+
+        service.deleteImageByHash(HASH);
+        commitTransaction();
+
+        verify(storage, never()).delete(anyString());
+    }
+
+    @Test
+    void deleteSwallowsStorageFailureAfterCommit() {
+        when(repository.findByHash(HASH)).thenReturn(Optional.of(image));
+        when(repository.existsByHash(HASH)).thenReturn(false);
+        doThrow(new StorageException("boom", null)).when(storage).delete(HASH);
+
+        service.deleteImageByHash(HASH);
+        commitTransaction();
+
+        verify(storage).delete(HASH);
+    }
+
+    private static void commitTransaction() {
+        TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+        completeTransaction(TransactionSynchronization.STATUS_COMMITTED);
     }
 
     @Test
