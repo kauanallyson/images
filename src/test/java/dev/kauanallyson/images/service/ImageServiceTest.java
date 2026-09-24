@@ -47,7 +47,6 @@ class ImageServiceTest {
     static final byte[] DATA = {1, 2, 3};
     static final String HASH = HashUtils.sha256Hex(DATA);
     static final String MIME = "application/octet-stream";
-    static final URI OBJECT_URI = URI.create("https://bucket/abc123");
     static final URI PRESIGNED = URI.create("https://bucket/abc123?sig");
 
     @Mock ImageStorage storage;
@@ -56,7 +55,7 @@ class ImageServiceTest {
     @Spy FileValidator validator = new FileValidator(new ImageProperties(List.of(MIME)));
     @InjectMocks ImageService service;
 
-    Image image = Image.of(HASH, "pic.png", MIME, OBJECT_URI);
+    Image image = Image.of(HASH, "pic.png", MIME);
     ImageUploadResponse response = new ImageUploadResponse(PRESIGNED, "pic.png");
 
     @BeforeEach
@@ -126,7 +125,6 @@ class ImageServiceTest {
     private void stubSuccessfulUpload() {
         storageDrainsUploads();
         when(repository.findByHash(HASH)).thenReturn(Optional.empty());
-        when(storage.objectUri(HASH)).thenReturn(OBJECT_URI);
         when(repository.save(any(Image.class))).thenReturn(image);
         when(storage.presignedGetUrl(HASH, "pic.png")).thenReturn(PRESIGNED);
         when(mapper.toResponse(image, PRESIGNED)).thenReturn(response);
@@ -141,7 +139,6 @@ class ImageServiceTest {
         String otherHash = HashUtils.sha256Hex(new byte[]{9});
         storageDrainsUploads();
         when(repository.findByHash(otherHash)).thenReturn(Optional.empty());
-        when(storage.objectUri(otherHash)).thenReturn(OBJECT_URI);
         when(repository.save(any(Image.class))).thenReturn(image);
         when(repository.existsByHash(otherHash)).thenReturn(false);
 
@@ -155,7 +152,6 @@ class ImageServiceTest {
     @Test
     void uploadPropagatesStorageFailureAfterSave() {
         when(repository.findByHash(HASH)).thenReturn(Optional.empty());
-        when(storage.objectUri(HASH)).thenReturn(OBJECT_URI);
         when(repository.save(any(Image.class))).thenReturn(image);
         doThrow(new StorageException("boom", null)).when(storage).upload(any(), anyLong(), anyString(), anyString());
 

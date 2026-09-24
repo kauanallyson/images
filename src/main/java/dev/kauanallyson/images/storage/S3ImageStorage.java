@@ -50,17 +50,6 @@ public final class S3ImageStorage implements ImageStorage {
     }
 
     @Override
-    public URI objectUri(String key) {
-        try {
-            return s3Client.utilities()
-                    .getUrl(b -> b.bucket(bucketName).key(key))
-                    .toURI();
-        } catch (URISyntaxException e) {
-            throw new StorageException("Storage returned an invalid URL for object '" + key + "'", e);
-        }
-    }
-
-    @Override
     public void upload(InputStream content, long size, String key, String contentType) {
         PutObjectRequest request = PutObjectRequest.builder()
                 .bucket(bucketName)

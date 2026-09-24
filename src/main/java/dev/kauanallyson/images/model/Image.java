@@ -5,7 +5,6 @@ import lombok.Getter;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
-import java.net.URI;
 import java.sql.Timestamp;
 import java.util.UUID;
 
@@ -27,21 +26,17 @@ public final class Image {
     @Column(nullable = false)
     private String contentType;
 
-    @Column(nullable = false)
-    private URI uri;
-
     @CreationTimestamp
     private Timestamp createdAt;
 
     @UpdateTimestamp
     private Timestamp updatedAt;
 
-    public static Image of(String hash, String fileName, String contentType, URI uri) {
+    public static Image of(String hash, String fileName, String contentType) {
         Image image = new Image();
         image.hash = hash;
         image.fileName = fileName;
         image.contentType = contentType;
-        image.uri = uri;
         return image;
     }
 }

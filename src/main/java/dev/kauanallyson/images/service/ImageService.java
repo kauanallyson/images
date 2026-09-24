@@ -49,7 +49,7 @@ public class ImageService {
         }
 
         Image saved = imageRepository.save(Image.of(
-                upload.hash(), upload.originalFileName(), upload.mimeType(), storage.objectUri(upload.hash())));
+                upload.hash(), upload.originalFileName(), upload.mimeType()));
         // the content is hashed while streaming to storage, so a mismatch is only known after the upload;
         // throwing rolls the row back and the rollback hook removes the object
         MessageDigest digest = HashUtils.sha256();
