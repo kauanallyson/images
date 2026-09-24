@@ -47,12 +47,7 @@ public class FileValidator {
             throw new UnsupportedMediaTypeException(mimeType, properties.allowedTypes());
         }
 
-        return new ValidatedUpload(content, source.size(), hash, mimeType, source.fileName());
-    }
-
-    public void verifyHash(ValidatedUpload upload, String actualHash) {
-        if (!upload.hash().equals(actualHash)) {
-            throw new FileIntegrityException();
-        }
+        VerifiedContent verified = new VerifiedContent(content, source.size(), hash);
+        return new ValidatedUpload(verified, source.size(), hash, mimeType, source.fileName());
     }
 }

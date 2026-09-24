@@ -14,7 +14,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class FileValidatorTest {
@@ -65,11 +64,28 @@ class FileValidatorTest {
     }
 
     @Test
-    void verifyHashRejectsMismatch() {
+    void contentVerifiesOnceFullyRead() throws IOException {
         ValidatedUpload upload = validator.validate(PNG_HASH, source(PNG, "pic.png"));
+        upload.content().readAllBytes();
 
-        assertThatCode(() -> validator.verifyHash(upload, PNG_HASH)).doesNotThrowAnyException();
-        assertThatThrownBy(() -> validator.verifyHash(upload, HashUtils.sha256Hex(new byte[]{1})))
-                .isInstanceOf(FileIntegrityException.class);
+        upload.content().verify();
+    }
+
+    @Test
+    void contentFailsVerificationWhenItDoesNotMatchDeclaredHash() throws IOException {
+        byte[] otherPng = PNG.clone();
+        otherPng[otherPng.length - 1] ^= 1;
+        ValidatedUpload upload = validator.validate(PNG_HASH, source(otherPng, "pic.png"));
+        upload.content().readAllBytes();
+
+        assertThatThrownBy(() -> upload.content().verify()).isInstanceOf(FileIntegrityException.class);
+    }
+
+    @Test
+    void contentFailsVerificationWhenNotFullyRead() throws IOException {
+        ValidatedUpload upload = validator.validate(PNG_HASH, source(PNG, "pic.png"));
+        upload.content().readNBytes(PNG.length - 1);
+
+        assertThatThrownBy(() -> upload.content().verify()).isInstanceOf(FileIntegrityException.class);
     }
 }
