@@ -5,7 +5,6 @@ import dev.kauanallyson.images.exceptions.EmptyFileException;
 import dev.kauanallyson.images.exceptions.FileIntegrityException;
 import dev.kauanallyson.images.exceptions.UnsupportedMediaTypeException;
 import dev.kauanallyson.images.service.UploadSource;
-import dev.kauanallyson.images.utils.HashUtils;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
@@ -21,7 +20,7 @@ class FileValidatorTest {
     // Minimal 1x1 PNG.
     static final byte[] PNG = java.util.Base64.getDecoder().decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==");
-    static final String PNG_HASH = HashUtils.sha256Hex(PNG);
+    static final String PNG_HASH = VerifiedContent.sha256Hex(PNG);
 
     final FileValidator validator = new FileValidator(new ImageProperties(List.of("image/png")));
 
@@ -51,7 +50,7 @@ class FileValidatorTest {
     @Test
     void rejectsDisallowedMimeType() {
         byte[] text = "hello".getBytes(StandardCharsets.UTF_8);
-        assertThatThrownBy(() -> validator.validate(HashUtils.sha256Hex(text), source(text, "a.txt")))
+        assertThatThrownBy(() -> validator.validate(VerifiedContent.sha256Hex(text), source(text, "a.txt")))
                 .isInstanceOf(UnsupportedMediaTypeException.class);
     }
 

@@ -10,7 +10,7 @@ import dev.kauanallyson.images.repository.ImageRepository;
 import dev.kauanallyson.images.validation.FileValidator;
 import dev.kauanallyson.images.config.ImageProperties;
 import dev.kauanallyson.images.exceptions.FileIntegrityException;
-import dev.kauanallyson.images.utils.HashUtils;
+import dev.kauanallyson.images.validation.VerifiedContent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,7 +45,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class ImageServiceTest {
     static final byte[] DATA = {1, 2, 3};
-    static final String HASH = HashUtils.sha256Hex(DATA);
+    static final String HASH = VerifiedContent.sha256Hex(DATA);
     static final String MIME = "application/octet-stream";
     static final URI PRESIGNED = URI.create("https://bucket/abc123?sig");
 
@@ -136,7 +136,7 @@ class ImageServiceTest {
 
     @Test
     void uploadRejectsContentThatDoesNotMatchDeclaredHashAndCleansUpOnRollback() {
-        String otherHash = HashUtils.sha256Hex(new byte[]{9});
+        String otherHash = VerifiedContent.sha256Hex(new byte[]{9});
         storageDrainsUploads();
         when(repository.findByHash(otherHash)).thenReturn(Optional.empty());
         when(repository.save(any(Image.class))).thenReturn(image);
