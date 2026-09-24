@@ -3,106 +3,44 @@ package dev.kauanallyson.images.service;
 import dev.kauanallyson.images.dto.ImageResponse;
 import dev.kauanallyson.images.dto.ImageUploadResponse;
 import dev.kauanallyson.images.exceptions.ImageNotFoundException;
-import dev.kauanallyson.images.exceptions.StorageException;
 import dev.kauanallyson.images.mapper.ImageMapper;
 import dev.kauanallyson.images.model.Image;
-import dev.kauanallyson.images.repository.ImageRepository;
-import dev.kauanallyson.images.storage.ImageStorage;
 import dev.kauanallyson.images.validation.FileValidator;
-import dev.kauanallyson.images.validation.ValidatedUpload;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import java.util.Optional;
-
-@Slf4j
 @Service
 public class ImageService {
-    private final ImageStorage storage;
+    private final ImageStore store;
     private final ImageMapper imageMapper;
-    private final ImageRepository imageRepository;
     private final FileValidator fileValidator;
 
-    public ImageService(ImageStorage storage, ImageMapper imageMapper, ImageRepository imageRepository,
-                        FileValidator fileValidator) {
-        this.storage = storage;
+    public ImageService(ImageStore store, ImageMapper imageMapper, FileValidator fileValidator) {
+        this.store = store;
         this.imageMapper = imageMapper;
-        this.imageRepository = imageRepository;
         this.fileValidator = fileValidator;
     }
 
-    @Transactional
     public ImageUploadResponse uploadImage(String hash, UploadSource source) {
-        ValidatedUpload upload = fileValidator.validate(hash, source);
-
-        Optional<Image> existing = imageRepository.findByHash(upload.hash());
-        if (existing.isPresent()) {
-            return withPresignedUrl(existing.get());
-        }
-
-        Image saved = imageRepository.save(Image.of(
-                upload.hash(), upload.originalFileName(), upload.mimeType()));
-        // the content is hashed while streaming to storage, so a mismatch is only known after the upload;
-        // throwing rolls the row back and the rollback hook removes the object
-        storage.upload(upload.content(), upload.size(), upload.hash(), upload.mimeType());
-        deleteObjectOnRollback(upload.hash());
-        upload.content().verify();
-        return withPresignedUrl(saved);
+        return withDownloadUrl(store.store(fileValidator.validate(hash, source)));
     }
 
     public Page<ImageResponse> getAllImages(Pageable pageable) {
-        return imageRepository.findAll(pageable).map(imageMapper::toImageResponse);
+        return store.findAll(pageable).map(imageMapper::toImageResponse);
     }
 
     public ImageUploadResponse findImageByHash(String hash) {
-        return imageRepository.findByHash(hash)
-                .map(this::withPresignedUrl)
+        return store.find(hash)
+                .map(this::withDownloadUrl)
                 .orElseThrow(() -> new ImageNotFoundException(hash));
     }
 
-    @Transactional
     public void deleteImageByHash(String hash) {
-        imageRepository.findByHash(hash).ifPresent(image -> {
-            imageRepository.delete(image);
-            deleteObjectAfterCommit(image.getHash());
-        });
+        store.remove(hash);
     }
 
-    // the key is the content hash, so skip cleanup if a concurrent upload of the same file committed the row
-    private void deleteObjectOnRollback(String hash) {
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCompletion(int status) {
-                if (status != STATUS_COMMITTED && !imageRepository.existsByHash(hash)) {
-                    storage.delete(hash);
-                }
-            }
-        });
-    }
-
-    // a failed object delete only leaves an orphan, so it is logged instead of failing the committed request
-    private void deleteObjectAfterCommit(String hash) {
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                if (imageRepository.existsByHash(hash)) {
-                    return;
-                }
-                try {
-                    storage.delete(hash);
-                } catch (StorageException e) {
-                    log.warn("Image '{}' deleted but its object could not be removed from storage", hash, e);
-                }
-            }
-        });
-    }
-
-    private ImageUploadResponse withPresignedUrl(Image image) {
-        return imageMapper.toResponse(image, storage.presignedGetUrl(image.getHash(), image.getFileName()));
+    private ImageUploadResponse withDownloadUrl(Image image) {
+        return imageMapper.toResponse(image, store.downloadUrl(image));
     }
 }
