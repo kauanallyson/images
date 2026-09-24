@@ -13,6 +13,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Optional;
@@ -44,6 +46,7 @@ public class ImageService {
         Image saved = imageRepository.save(Image.of(
                 upload.hash(), upload.originalFileName(), upload.mimeType(), storage.objectUri(upload.hash())));
         storage.upload(upload.data(), upload.hash(), upload.mimeType());
+        deleteObjectOnRollback(upload.hash());
         return withPresignedUrl(saved);
     }
 
@@ -62,6 +65,18 @@ public class ImageService {
         imageRepository.findByHash(hash).ifPresent(image -> {
             imageRepository.delete(image);
             storage.delete(image.getHash());
+        });
+    }
+
+    // the key is the content hash, so skip cleanup if a concurrent upload of the same file committed the row
+    private void deleteObjectOnRollback(String hash) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status != STATUS_COMMITTED && !imageRepository.existsByHash(hash)) {
+                    storage.delete(hash);
+                }
+            }
         });
     }
 

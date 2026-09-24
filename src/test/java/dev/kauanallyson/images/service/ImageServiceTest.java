@@ -9,6 +9,8 @@ import dev.kauanallyson.images.storage.ImageStorage;
 import dev.kauanallyson.images.repository.ImageRepository;
 import dev.kauanallyson.images.validation.FileValidator;
 import dev.kauanallyson.images.validation.ValidatedUpload;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
@@ -16,6 +18,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.net.URI;
@@ -49,6 +53,16 @@ class ImageServiceTest {
     Image image = Image.of(HASH, "pic.png", "image/png", OBJECT_URI);
     ImageUploadResponse response = new ImageUploadResponse(PRESIGNED, "pic.png");
 
+    @BeforeEach
+    void startSynchronization() {
+        TransactionSynchronizationManager.initSynchronization();
+    }
+
+    @AfterEach
+    void clearSynchronization() {
+        TransactionSynchronizationManager.clear();
+    }
+
     @Test
     void uploadSavesRowBeforeUploadingObject() {
         when(validator.validate(HASH, FILE)).thenReturn(upload);
@@ -64,6 +78,51 @@ class ImageServiceTest {
         InOrder order = inOrder(repository, storage);
         order.verify(repository).save(any(Image.class));
         order.verify(storage).upload(DATA, HASH, "image/png");
+    }
+
+    @Test
+    void uploadDeletesObjectWhenTransactionRollsBack() {
+        stubSuccessfulUpload();
+        when(repository.existsByHash(HASH)).thenReturn(false);
+
+        service.uploadImage(HASH, FILE);
+        completeTransaction(TransactionSynchronization.STATUS_ROLLED_BACK);
+
+        verify(storage).delete(HASH);
+    }
+
+    @Test
+    void uploadKeepsObjectWhenTransactionCommits() {
+        stubSuccessfulUpload();
+
+        service.uploadImage(HASH, FILE);
+        completeTransaction(TransactionSynchronization.STATUS_COMMITTED);
+
+        verify(storage, never()).delete(anyString());
+    }
+
+    @Test
+    void uploadKeepsObjectOnRollbackWhenConcurrentUploadCommittedSameHash() {
+        stubSuccessfulUpload();
+        when(repository.existsByHash(HASH)).thenReturn(true);
+
+        service.uploadImage(HASH, FILE);
+        completeTransaction(TransactionSynchronization.STATUS_ROLLED_BACK);
+
+        verify(storage, never()).delete(anyString());
+    }
+
+    private void stubSuccessfulUpload() {
+        when(validator.validate(HASH, FILE)).thenReturn(upload);
+        when(repository.findByHash(HASH)).thenReturn(Optional.empty());
+        when(storage.objectUri(HASH)).thenReturn(OBJECT_URI);
+        when(repository.save(any(Image.class))).thenReturn(image);
+        when(storage.presignedGetUrl(HASH, "pic.png")).thenReturn(PRESIGNED);
+        when(mapper.toResponse(image, PRESIGNED)).thenReturn(response);
+    }
+
+    private static void completeTransaction(int status) {
+        TransactionSynchronizationManager.getSynchronizations().forEach(s -> s.afterCompletion(status));
     }
 
     @Test
