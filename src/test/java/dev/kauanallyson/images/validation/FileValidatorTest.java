@@ -25,7 +25,7 @@ class FileValidatorTest {
     final FileValidator validator = new FileValidator(new ImageProperties(List.of("image/png")));
 
     static UploadSource source(byte[] data, String fileName) {
-        return new UploadSource(new ByteArrayInputStream(data), data.length, fileName);
+        return new UploadSource(() -> new ByteArrayInputStream(data), data.length, fileName);
     }
 
     @Test
@@ -36,7 +36,7 @@ class FileValidatorTest {
         assertThat(upload.mimeType()).isEqualTo("image/png");
         assertThat(upload.originalFileName()).isEqualTo("pic.png");
         assertThat(upload.size()).isEqualTo(PNG.length);
-        assertThat(upload.content().readAllBytes()).isEqualTo(PNG);
+        assertThat(upload.content().getInputStream().readAllBytes()).isEqualTo(PNG);
     }
 
     @Test
@@ -65,7 +65,7 @@ class FileValidatorTest {
     @Test
     void contentVerifiesOnceFullyRead() throws IOException {
         ValidatedUpload upload = validator.validate(PNG_HASH, source(PNG, "pic.png"));
-        upload.content().readAllBytes();
+        upload.content().getInputStream().readAllBytes();
 
         upload.content().verify();
     }
@@ -75,7 +75,7 @@ class FileValidatorTest {
         byte[] otherPng = PNG.clone();
         otherPng[otherPng.length - 1] ^= 1;
         ValidatedUpload upload = validator.validate(PNG_HASH, source(otherPng, "pic.png"));
-        upload.content().readAllBytes();
+        upload.content().getInputStream().readAllBytes();
 
         assertThatThrownBy(() -> upload.content().verify()).isInstanceOf(FileIntegrityException.class);
     }
@@ -83,8 +83,17 @@ class FileValidatorTest {
     @Test
     void contentFailsVerificationWhenNotFullyRead() throws IOException {
         ValidatedUpload upload = validator.validate(PNG_HASH, source(PNG, "pic.png"));
-        upload.content().readNBytes(PNG.length - 1);
+        upload.content().getInputStream().readNBytes(PNG.length - 1);
 
         assertThatThrownBy(() -> upload.content().verify()).isInstanceOf(FileIntegrityException.class);
+    }
+
+    @Test
+    void reopeningContentRestartsVerification() throws IOException {
+        ValidatedUpload upload = validator.validate(PNG_HASH, source(PNG, "pic.png"));
+        upload.content().getInputStream().readNBytes(PNG.length / 2);
+        upload.content().getInputStream().readAllBytes();
+
+        upload.content().verify();
     }
 }

@@ -60,7 +60,7 @@ class ImageServiceTest {
     @Autowired PlatformTransactionManager transactionManager;
 
     static UploadSource source() {
-        return new UploadSource(new ByteArrayInputStream(PNG), PNG.length, "pic.png");
+        return new UploadSource(() -> new ByteArrayInputStream(PNG), PNG.length, "pic.png");
     }
 
     @AfterEach
@@ -71,6 +71,7 @@ class ImageServiceTest {
         };
         storage.failUploads = false;
         storage.failDeletes = false;
+        storage.failFirstAttemptMidway = false;
     }
 
     @Test
@@ -90,6 +91,26 @@ class ImageServiceTest {
 
         assertThat(service.uploadImage(HASH, source()).fileName()).isEqualTo("pic.png");
         assertThat(repository.count()).isEqualTo(1);
+    }
+
+    @Test
+    void uploadOfExistingHashRejectsContentThatDoesNotMatch() {
+        service.uploadImage(HASH, source());
+        byte[] other = PNG.clone();
+        other[other.length - 1] ^= 1;
+
+        UploadSource tampered = new UploadSource(() -> new ByteArrayInputStream(other), other.length, "x.png");
+
+        assertThatThrownBy(() -> service.uploadImage(HASH, tampered)).isInstanceOf(FileIntegrityException.class);
+    }
+
+    @Test
+    void uploadVerifiesContentWhenStorageRetriesAfterPartialRead() {
+        storage.failFirstAttemptMidway = true;
+
+        service.uploadImage(HASH, source());
+
+        assertThat(storage.objects.get(HASH)).isEqualTo(PNG);
     }
 
     @Test

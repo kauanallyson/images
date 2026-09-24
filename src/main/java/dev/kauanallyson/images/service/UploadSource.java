@@ -1,7 +1,7 @@
 package dev.kauanallyson.images.service;
 
-import java.io.InputStream;
+import org.springframework.core.io.InputStreamSource;
 
-// the caller that opened the stream is responsible for closing it
-public record UploadSource(InputStream content, long size, String fileName) {
+// content must open a fresh stream on every call, so uploads can be retried
+public record UploadSource(InputStreamSource content, long size, String fileName) {
 }

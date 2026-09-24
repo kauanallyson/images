@@ -1,9 +1,9 @@
 package dev.kauanallyson.images.storage;
 
 import dev.kauanallyson.images.exceptions.StorageException;
+import org.springframework.core.io.InputStreamSource;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.net.URI;
 import java.util.Map;
@@ -15,16 +15,21 @@ public class InMemoryImageStorage implements ImageStorage {
     };
     public boolean failUploads;
     public boolean failDeletes;
+    // reads part of the content before failing once, like a dropped connection the S3 client retries
+    public boolean failFirstAttemptMidway;
 
     @Override
-    public void upload(InputStream content, long size, String key, String contentType) {
+    public void upload(InputStreamSource content, long size, String key, String contentType) {
         beforeUpload.run();
         if (failUploads) {
             throw new StorageException("upload failed", null);
         }
-        // like the S3 client, reads exactly the declared length
+        // like the S3 client, opens a new stream per attempt and reads exactly the declared length
         try {
-            objects.put(key, content.readNBytes((int) size));
+            if (failFirstAttemptMidway) {
+                content.getInputStream().readNBytes((int) size / 2);
+            }
+            objects.put(key, content.getInputStream().readNBytes((int) size));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

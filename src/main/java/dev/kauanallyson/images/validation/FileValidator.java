@@ -37,10 +37,9 @@ public class FileValidator {
             throw new FileIntegrityException();
         }
 
-        InputStream content = new BufferedInputStream(source.content());
         String mimeType;
-        try {
-            // sniffs only the leading bytes; the buffered stream is reset so they are still hashed and stored
+        // sniffs only the leading bytes of a separately opened stream
+        try (InputStream content = new BufferedInputStream(source.content().getInputStream())) {
             mimeType = TIKA.detect(content);
         } catch (IOException e) {
             throw new FileReadException(e);
@@ -49,7 +48,7 @@ public class FileValidator {
             throw new UnsupportedMediaTypeException(mimeType, properties.allowedTypes());
         }
 
-        VerifiedContent verified = new VerifiedContent(content, source.size(), hash);
+        VerifiedContent verified = new VerifiedContent(source.content(), source.size(), hash);
         return new ValidatedUpload(verified, source.size(), hash, mimeType, source.fileName());
     }
 }
